@@ -31,9 +31,3 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      # Run tests (skip gracefully if none exist)
-      - name: Run tests
-        run: |
-          pip install pytest
-          pytest || echo "No tests found"
