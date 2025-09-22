@@ -1,45 +1,59 @@
-name: Build & Push Docker Image to GCR
+name: persimmon-app-dev
 
 on:
-  push:
-    branches: [ "main" ]
-  workflow_dispatch: # manual trigger
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Specify the branch to run the workflow'
+        required: true
 
 env:
-  PROJECT_ID: your-gcp-project-id       # replace with your GCP project ID
-  REGION: asia-south1                   # GCP region (same as your Artifact Registry)
-  REPO_NAME: docker-repo                # Artifact Registry repository
-  IMAGE_NAME: fastapi-app               # Docker image name
+  PROJECT_ID: persimmon-ai
+  REGION: asia-south1
+  REPO_NAME: persimmon-app-dev
 
 jobs:
-  docker-build:
+  build-and-push:
+    name: Build and Push Docker Image
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout code
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      # Checkout the repository
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      # Set up Docker Buildx
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # Authenticate to Google Cloud
+      # Authenticate with Google Cloud
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          credentials_json: "${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}"
 
-      # Configure Docker to use GCP Artifact Registry
-      - name: Configure Docker for GCR
-        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+      # Set up gcloud CLI
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
 
-      # Build Docker image
+      # Configure Docker for GCR
+      - name: Configure Docker
+        run: gcloud auth configure-docker --quiet
+
+      # Build Docker image with build args
       - name: Build Docker image
         run: |
-          docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+          docker build \
+            --build-arg DSN_DEV="dbname=postgres user=postgres.heivjxaodqzygxutbbby password='Persimmon@12345' host=aws-0-ap-south-1.pooler.supabase.com port=5432 sslmode=require" \
+            --build-arg DSN_QA="dbname=postgres user=postgres.hvbyjegqzksqduwkhzcx password='Persimmon@12345' host=aws-0-ap-south-1.pooler.supabase.com port=5432 sslmode=require" \
+            --tag gcr.io/$PROJECT_ID/$REPO_NAME:$GITHUB_SHA .
 
       # Push Docker image to GCR
       - name: Push Docker image
         run: |
-          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push gcr.io/$PROJECT_ID/$REPO_NAME:$GITHUB_SHA
+
+      # Optionally deploy to Cloud Run
+      # - name: Deploy to Cloud Run
+      #   run: |
+      #     gcloud run deploy $REPO_NAME \
+      #       --image gcr.io/$PROJECT_ID/$REPO_NAME:$GITHUB_SHA \
+      #       --region $REGION \
+      #       --platform managed \
+      #       --allow-unauthenticated
